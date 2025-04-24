@@ -5,7 +5,7 @@ ini_set('display_errors', 1);
 
 // Get flowers for dropdown
 $flowerOptions = [];
-$result = $conn->query("SELECT id, name FROM products ORDER BY name");
+$result = $conn->query("SELECT id, name FROM product ORDER BY name");
 while ($row = $result->fetch_assoc()) {
     $flowerOptions[$row['id']] = $row['name'];
 }

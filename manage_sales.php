@@ -12,13 +12,14 @@ if (isset($_GET['delete'])) {
     $restore = $conn->query("SELECT product_id, quantity FROM sales WHERE id = $sale_id");
     if ($restore->num_rows > 0) {
         $row = $restore->fetch_assoc();
-        $conn->query("UPDATE products SET stock = stock + {$row['quantity']} WHERE id = {$row['product_id']}");
+        $conn->query("UPDATE product SET stock = stock + {$row['quantity']} WHERE flower_id = {$row['product_id']}");
         $conn->query("DELETE FROM sales WHERE id = $sale_id");
         echo "<p class='success'>✅ Sale deleted and stock restored.</p>";
     }
 }
 
 // --- UPDATE SALE ---
+$update_success = false; // Flag to check if the sale was updated successfully
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_sale'])) {
     $sale_id = intval($_POST['sale_id']);
     $new_quantity = intval($_POST['quantity']);
@@ -28,8 +29,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_sale'])) {
     $product_id = $oldSale['product_id'];
     $old_quantity = $oldSale['quantity'];
 
-    $stock_result = $conn->query("SELECT stock FROM products WHERE id = $product_id");
-    $stock = $stock_result->fetch_assoc()['stock'];
+    $stock_result = $conn->query("SELECT quantity FROM product WHERE flower_id = $product_id");
+    $stock = $stock_result->fetch_assoc()['quantity'];
     $diff = $new_quantity - $old_quantity;
 
     if ($stock < $diff) {
@@ -38,15 +39,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_sale'])) {
         $stmt = $conn->prepare("UPDATE sales SET quantity = ?, sale_date = ? WHERE id = ?");
         $stmt->bind_param("isi", $new_quantity, $new_date, $sale_id);
         $stmt->execute();
-        $conn->query("UPDATE products SET stock = stock - $diff WHERE id = $product_id");
-        echo "<p class='success'>✅ Sale updated successfully!</p>";
+        $conn->query("UPDATE product SET quantity = quantity - $diff WHERE flower_id = $product_id");
+        $update_success = true; // Set the flag to true if update is successful
     }
 }
 
 // --- FETCH PAGINATED SALES ---
+$order_by = isset($_GET['order_by']) ? $_GET['order_by'] : 'sale_date';  // Default sort by sale_date
+$order_dir = isset($_GET['order_dir']) ? $_GET['order_dir'] : 'DESC';  // Default descending order
+
 $sales = $conn->query("SELECT s.*, p.name FROM sales s 
-                       JOIN products p ON s.product_id = p.id 
-                       ORDER BY s.sale_date DESC 
+                       JOIN product p ON s.product_id = p.flower_id 
+                       ORDER BY $order_by $order_dir
                        LIMIT $offset, $rows_per_page");
 
 // --- GET TOTAL FOR PAGINATION ---
@@ -101,6 +105,7 @@ $total_pages = ceil($total_sales / $rows_per_page);
         table th {
             background-color: #f8f9fa;
             color: #333;
+            cursor: pointer;
         }
 
         table tr:nth-child(even) {
@@ -110,7 +115,7 @@ $total_pages = ceil($total_sales / $rows_per_page);
         table input[type="number"],
         table input[type="date"] {
             padding: 8px;
-            width: 80px;
+            width: 100px;
             border: 1px solid #ddd;
             border-radius: 4px;
         }
@@ -155,19 +160,68 @@ $total_pages = ceil($total_sales / $rows_per_page);
             background-color: #28a745;
         }
 
-        .success, .error {
+        /* Success/Failure Pop-up Notification */
+        .popup {
+            display: none;
+            background-color: #28a745;
+            color: white;
             text-align: center;
-            font-size: 18px;
-            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            animation: popupAnimation 0.5s ease-in-out;
         }
 
-        .success {
-            color: #28a745;
+        .error-popup {
+            background-color: #dc3545;
         }
 
-        .error {
-            color: #dc3545;
+        @keyframes popupAnimation {
+            0% {
+                opacity: 0;
+                top: 0;
+            }
+            100% {
+                opacity: 1;
+                top: 20px;
+            }
         }
+
+        /* Success/Failure Popup Fade-out */
+        .popup.hide {
+            animation: fadeOut 2s forwards;
+        }
+
+        @keyframes fadeOut {
+            0% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+                display: none;
+            }
+        }
+
+        /* Go Back Button */
+        .btn-back-dashboard {
+            display: inline-block;
+            padding: 5px 10px;
+            background-color: #007bff;
+            color: white;
+            font-size: 10px;
+            text-decoration: none;
+            border-radius: 3px;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .btn-back-dashboard:hover {
+            background-color: #0056b3;
+        }
+
     </style>
 </head>
 <body>
@@ -175,13 +229,16 @@ $total_pages = ceil($total_sales / $rows_per_page);
     <div class="container">
         <h2>🧾 Manage Sales Records</h2>
 
+        <!-- Go Back to Dashboard Button -->
+        <a href="dashboard.php" class="btn-back-dashboard">Go Back to Dashboard</a>
+
         <!-- Sales Table -->
         <table>
             <tr>
-                <th>ID</th>
-                <th>Flower</th>
-                <th>Quantity</th>
-                <th>Sale Date</th>
+                <th><a href="?order_by=id&order_dir=<?= $order_dir == 'ASC' ? 'DESC' : 'ASC' ?>">ID</a></th>
+                <th><a href="?order_by=name&order_dir=<?= $order_dir == 'ASC' ? 'DESC' : 'ASC' ?>">Flower</a></th>
+                <th><a href="?order_by=quantity&order_dir=<?= $order_dir == 'ASC' ? 'DESC' : 'ASC' ?>">Quantity</a></th>
+                <th><a href="?order_by=sale_date&order_dir=<?= $order_dir == 'ASC' ? 'DESC' : 'ASC' ?>">Sale Date</a></th>
                 <th>Actions</th>
             </tr>
 
@@ -211,6 +268,23 @@ $total_pages = ceil($total_sales / $rows_per_page);
             <?php endfor; ?>
         </div>
     </div>
+
+    <!-- Success/Failure Pop-up Notification -->
+    <div id="popup" class="popup <?= $update_success ? '' : 'hide' ?>">
+        ✅ Sale updated successfully!
+    </div>
+    
+
+    <script>
+        // Automatically hide the success popup after 3 seconds
+        window.onload = function() {
+            if (document.getElementById('popup') && document.getElementById('popup').classList.contains('popup')) {
+                setTimeout(function() {
+                    document.getElementById('popup').classList.add('hide');
+                }, 3000); // Popup will fade out after 3 seconds
+            }
+        }
+    </script>
 
 </body>
 </html>
